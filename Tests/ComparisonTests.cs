@@ -33,10 +33,9 @@ namespace JSIL.Tests {
             var test = new ComparisonTest(@"TestCases\NBody.cs");
 
             test.Run();
-            test.Run("50000");
+            test.Run("20000");
         }
 
-        // Fails because we emit a goto.
         [Test]
         public void FannkuchRedux () {
             var test = new ComparisonTest(@"TestCases\FannkuchRedux.cs");

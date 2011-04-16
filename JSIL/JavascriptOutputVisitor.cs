@@ -22,6 +22,7 @@ namespace JSIL.Internal {
           ITargetedControlFlowVisitor<object, object>
     {
         public readonly Stack<string> BaseTypeStack = new Stack<string>();
+        public readonly Stack<string> TypeNameStack = new Stack<string>();
 
         public JavascriptOutputVisitor (IOutputFormatter formatter)
             : base (formatter, new CSharpFormattingPolicy {
@@ -54,7 +55,21 @@ namespace JSIL.Internal {
         }
 
         protected void WriteIdentifier (MemberReferenceExpression member) {
-            WriteIdentifier(Util.EscapeIdentifier(member.MemberName));
+            if (member.Target is BaseReferenceExpression) {
+                WriteIdentifier(String.Format(
+                    "{0}_{1}", 
+                    Util.EscapeIdentifier(BaseTypeStack.Peek()),
+                    Util.EscapeIdentifier(member.MemberName)
+                ));
+            } else if (member.Target is ThisReferenceExpression) {
+                WriteIdentifier(String.Format(
+                    "{0}_{1}",
+                    Util.EscapeIdentifier(TypeNameStack.Peek()),
+                    Util.EscapeIdentifier(member.MemberName)
+                ));
+            } else {
+                WriteIdentifier(Util.EscapeIdentifier(member.MemberName));
+            }
         }
 
         protected void WriteIdentifier (NamespaceDeclaration ns) {
@@ -198,6 +213,8 @@ namespace JSIL.Internal {
             if (instanceConstructors.Count() > 1)
                 throw new NotImplementedException("Overloaded constructors are not supported");
 
+            TypeNameStack.Push(typeDeclaration.Annotation<TypeDefinition>().FullName);
+
             StartNode(typeDeclaration);
             WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
             Space();
@@ -240,160 +257,164 @@ namespace JSIL.Internal {
             Semicolon();
             NewLine();
 
-            if (true) {
-                LPar();
+            LPar();
 
-                Space();
-                WriteKeyword("function");
-                // I'd emit a function name here for debuggability, but for some
-                //  reason that breaks tests :(
-                Space();
+            Space();
+            WriteKeyword("function");
+            // I'd emit a function name here for debuggability, but for some
+            //  reason that breaks tests :(
+            Space();
 
-                LPar();
-                RPar();
+            LPar();
+            RPar();
 
-                OpenBrace(BraceStyle.EndOfLine);
+            OpenBrace(BraceStyle.EndOfLine);
 
-                if (isStatic) {
-                } else if (typeDeclaration.BaseTypes.Count > 1) {
-                    throw new NotImplementedException("Inheritance from multiple bases not implemented");
-                } else {
-                    string baseClass = "System.Object";
-                    if (typeDeclaration.BaseTypes.Count == 1) {
-                        var baseReference = typeDeclaration.BaseTypes.FirstOrDefault().Annotation<TypeReference>();
-                        baseClass = baseReference.FullName;
-                        BaseTypeStack.Push(baseClass);
-                    }
-
-                    WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
-                    WriteToken(".", null);
-                    WriteKeyword("prototype");
-                    Space();
-                    WriteToken("=", null);
-                    Space();
-                    WriteIdentifier("JSIL.CloneObject");
-                    LPar();
-                    WriteIdentifier(baseClass);
-                    WriteToken(".", null);
-                    WriteKeyword("prototype");
-                    RPar();
-                    Semicolon();
+            if (isStatic) {
+            } else if (typeDeclaration.BaseTypes.Count > 1) {
+                throw new NotImplementedException("Inheritance from multiple bases not implemented");
+            } else {
+                string baseClass = "System.Object";
+                if (typeDeclaration.BaseTypes.Count == 1) {
+                    var baseReference = typeDeclaration.BaseTypes.FirstOrDefault().Annotation<TypeReference>();
+                    baseClass = baseReference.FullName;
+                    BaseTypeStack.Push(baseClass);
                 }
 
-                if (!isStatic) {
-                    WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
-                    WriteToken(".", null);
-                    WriteIdentifier("prototype");
-                    WriteToken(".", null);
-                    WriteIdentifier("__TypeName__");
-                    Space();
-                    WriteToken("=", null);
-                    Space();
-                    WritePrimitiveValue(typeDeclaration.Annotation<TypeReference>().ToString());
-                    Semicolon();
+                WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
+                WriteToken(".", null);
+                WriteKeyword("prototype");
+                Space();
+                WriteToken("=", null);
+                Space();
+                WriteIdentifier("JSIL.CloneObject");
+                LPar();
+                WriteIdentifier(baseClass);
+                WriteToken(".", null);
+                WriteKeyword("prototype");
+                RPar();
+                Semicolon();
+            }
 
-                    WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
+            if (!isStatic) {
+                WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
+                WriteToken(".", null);
+                WriteIdentifier("prototype");
+                WriteToken(".", null);
+                WriteIdentifier("__TypeName__");
+                Space();
+                WriteToken("=", null);
+                Space();
+                WritePrimitiveValue(typeDeclaration.Annotation<TypeReference>().ToString());
+                Semicolon();
+
+                WriteIdentifier(typeDeclaration.Annotation<TypeReference>());
+                WriteToken(".", null);
+                WriteIdentifier("prototype");
+                WriteToken(".", null);
+                WriteIdentifier("__ctor");
+                Space();
+                WriteToken("=", null);
+                Space();
+                WriteKeyword("function", null);
+                LPar();
+
+                if (instanceConstructor != null) {
+                    StartNode(instanceConstructor);
+                    WriteCommaSeparatedList(instanceConstructor.Parameters);
+                    EndNode(instanceConstructor);
+                }
+
+                RPar();
+                OpenBrace(BraceStyle.EndOfLine);
+
+                if (typeDeclaration.BaseTypes.Count == 1) {
+                    var baseReference = typeDeclaration.BaseTypes.FirstOrDefault().Annotation<TypeReference>();
+                    WriteIdentifier(baseReference);
                     WriteToken(".", null);
                     WriteIdentifier("prototype");
                     WriteToken(".", null);
                     WriteIdentifier("__ctor");
-                    Space();
-                    WriteToken("=", null);
-                    Space();
-                    WriteKeyword("function", null);
+                    WriteToken(".", null);
+                    WriteIdentifier("call");
                     LPar();
-
-                    if (instanceConstructor != null) {
-                        StartNode(instanceConstructor);
-                        WriteCommaSeparatedList(instanceConstructor.Parameters);
-                        EndNode(instanceConstructor);
-                    }
-
+                    WriteKeyword("this");
                     RPar();
-                    OpenBrace(BraceStyle.EndOfLine);
-
-                    if (typeDeclaration.BaseTypes.Count == 1) {
-                        var baseReference = typeDeclaration.BaseTypes.FirstOrDefault().Annotation<TypeReference>();
-                        WriteIdentifier(baseReference);
-                        WriteToken(".", null);
-                        WriteIdentifier("prototype");
-                        WriteToken(".", null);
-                        WriteIdentifier("__ctor");
-                        WriteToken(".", null);
-                        WriteIdentifier("call");
-                        LPar();
-                        WriteKeyword("this");
-                        RPar();
-                        Semicolon();
-                    }
-
-                    foreach (var member in typeDeclaration.Members) {
-                        if (member is ConstructorDeclaration)
-                            continue;
-                        else if (member is MethodDeclaration)
-                            continue;
-                        else if (member is PropertyDeclaration) {
-                            EmitPropertyDefault(
-                                member, (member as PropertyDeclaration).Annotation<PropertyDefinition>()
-                            );
-                            continue;
-                        } else if (IsStatic(member))
-                            continue;
-
-                        member.AcceptVisitor(this, data);
-                    }
-
-                    if (instanceConstructor != null) {
-                        StartNode(instanceConstructor);
-                        instanceConstructor.Body.AcceptVisitor(this, "nobraces");
-                        EndNode(instanceConstructor);
-                    }
-
-                    CloseBrace(BraceStyle.NextLine);
                     Semicolon();
                 }
 
                 foreach (var member in typeDeclaration.Members) {
-                    if (member is MethodDeclaration)
-                        ;
-                    else if (member is ConstructorDeclaration)
+                    if (member is ConstructorDeclaration)
                         continue;
-                    else if (member is PropertyDeclaration)
-                        ;
-                    else if (!IsStatic(member))
+                    else if (member is MethodDeclaration)
+                        continue;
+                    else if (member is PropertyDeclaration) {
+                        EmitPropertyDefault(
+                            member, (member as PropertyDeclaration).Annotation<PropertyDefinition>()
+                        );
+                        continue;
+                    } else if (IsStatic(member))
                         continue;
 
                     member.AcceptVisitor(this, data);
-
-                    if (isStatic && (member is PropertyDeclaration)) {
-                        var propertyDefinition = (member as PropertyDeclaration).Annotation<PropertyDefinition>();
-                        if (propertyDefinition != null)
-                            EmitPropertyDefault(
-                                member, propertyDefinition
-                            );
-                    }
                 }
 
-                if (staticConstructor != null) {
-                    StartNode(staticConstructor);
-                    staticConstructor.Body.AcceptVisitor(this, "nobraces");
-                    EndNode(staticConstructor);
+                if (instanceConstructor != null) {
+                    StartNode(instanceConstructor);
+                    instanceConstructor.Body.AcceptVisitor(this, "nobraces");
+                    EndNode(instanceConstructor);
                 }
 
                 CloseBrace(BraceStyle.NextLine);
-
-                RPar();
-                Space();
-
-                LPar();
-                RPar();
-
                 Semicolon();
-                NewLine();
             }
+
+            foreach (var member in typeDeclaration.Members) {
+                if (member is MethodDeclaration)
+                    ;
+                else if (member is ConstructorDeclaration)
+                    continue;
+                else if (member is PropertyDeclaration)
+                    ;
+                else if (member is FieldDeclaration)
+                    ;
+                else if (!IsStatic(member))
+                    continue;
+
+                member.AcceptVisitor(this, data);
+
+                if (isStatic && (member is PropertyDeclaration)) {
+                    var propertyDefinition = (member as PropertyDeclaration).Annotation<PropertyDefinition>();
+                    if (propertyDefinition != null)
+                        EmitPropertyDefault(
+                            member, propertyDefinition
+                        );
+                } else if (member is FieldDeclaration) {
+                    DefineField(member as FieldDeclaration);
+                }
+            }
+
+            if (staticConstructor != null) {
+                StartNode(staticConstructor);
+                staticConstructor.Body.AcceptVisitor(this, "nobraces");
+                EndNode(staticConstructor);
+            }
+
+            CloseBrace(BraceStyle.NextLine);
+
+            RPar();
+            Space();
+
+            LPar();
+            RPar();
+
+            Semicolon();
+            NewLine();
 
             if (typeDeclaration.BaseTypes.Count == 1)
                 BaseTypeStack.Pop();
+
+            TypeNameStack.Pop();
 
             return EndNode(typeDeclaration);
         }
@@ -596,9 +617,15 @@ namespace JSIL.Internal {
                     var fieldRef = variableInitializer.Parent.Annotation<FieldReference>();
                     WriteThisReference(fieldRef.DeclaringType.Resolve(), fieldRef);
                     WriteToken(".", null);
+                    WriteIdentifier(String.Format(
+                        "{0}_{1}",
+                        Util.EscapeIdentifier(TypeNameStack.Peek()),
+                        Util.EscapeIdentifier(variableInitializer.Name)
+                    ));
+                } else {
+                    WriteIdentifier(Util.EscapeIdentifier(variableInitializer.Name));
                 }
 
-                WriteIdentifier(Util.EscapeIdentifier(variableInitializer.Name));
                 Space();
                 WriteToken("=", VariableInitializer.Roles.Assign);
                 Space();
@@ -694,51 +721,61 @@ namespace JSIL.Internal {
             if (emitted)
                 Semicolon();
 
+            var declaringType = fieldDeclaration.Annotation<FieldDefinition>().DeclaringType;
+            var fieldType = fieldDeclaration.ReturnType.Annotation<TypeReference>();
+
             return EndNode(fieldDeclaration);
         }
 
-        public override object VisitPropertyDeclaration (PropertyDeclaration propertyDeclaration, object data) {
-            if (IsIgnored(propertyDeclaration.Attributes))
-                return null;
+        protected void DefineField (FieldDeclaration fieldDeclaration) {
+            var isStatic = IsStatic(fieldDeclaration);
+            var declaringType = fieldDeclaration.Annotation<FieldDefinition>().DeclaringType;
+            var fieldType = fieldDeclaration.ReturnType.Annotation<TypeReference>();
 
-            StartNode(propertyDeclaration);
+            foreach (var variable in fieldDeclaration.Variables) {
+                var pdecl = new PropertyDeclaration {
+                    Name = variable.Name,
+                    Getter = new Accessor {
+                        Body = BlockStatement.Null
+                    },
+                    Setter = new Accessor {
+                        Body = BlockStatement.Null
+                    }
+                };
 
-            var rawValue = propertyDeclaration.Annotation<PrimitiveExpression>();
-            if (rawValue != null) {
-                // If the property is annotative with a primitive expression, it was replaced with JSReplacement
-                var originalMethod = propertyDeclaration.Annotation<MethodDeclaration>();
-                WriteIdentifier(originalMethod.Annotation<MethodDefinition>().DeclaringType);
-
-                WriteToken(".", null);
-                WriteIdentifier(Util.EscapeIdentifier(propertyDeclaration.Name));
-
-                Space();
-                WriteToken("=", null);
-                Space();
-
-                WriteIdentifier(rawValue.Value as string, null);
+                EmitAccessor(
+                    String.Format(
+                        "get_{0}_{1}", Util.EscapeIdentifier(declaringType.FullName),
+                        Util.EscapeIdentifier(variable.Name)
+                    ),
+                    String.Format(
+                        "{0}_{1}", Util.EscapeIdentifier(declaringType.FullName),
+                        Util.EscapeIdentifier(variable.Name)
+                    ),
+                    declaringType, BlockStatement.Null,
+                    pdecl.Getter.Role, isStatic
+                );
                 Semicolon();
 
-                return EndNode(propertyDeclaration);
+                EmitAccessor(
+                    String.Format(
+                        "set_{0}_{1}", Util.EscapeIdentifier(declaringType.FullName),
+                        Util.EscapeIdentifier(variable.Name)
+                    ),
+                    String.Format(
+                        "{0}_{1}", Util.EscapeIdentifier(declaringType.FullName),
+                        Util.EscapeIdentifier(variable.Name)
+                    ),
+                    declaringType, BlockStatement.Null,
+                    pdecl.Setter.Role, isStatic
+                );
+                Semicolon();
+
+                DefineProperty(pdecl, declaringType, isStatic, variable.Name);
             }
+        }
 
-            var propertyDefinition = propertyDeclaration.Annotation<PropertyDefinition>();
-            var declaringType = propertyDefinition.DeclaringType;
-            bool isStatic = propertyDefinition.GetMethod.IsStatic || propertyDefinition.SetMethod.IsStatic;
-            bool isAutoProperty = propertyDefinition.GetMethod.CustomAttributes.Concat(
-                    propertyDefinition.SetMethod.CustomAttributes
-                ).Where((ca) => ca.AttributeType.Name == "CompilerGeneratedAttribute")
-                .Count() > 0;
-
-            // Generate the accessor methods
-            foreach (AstNode node in propertyDeclaration.Children) {
-                if (node.Role == IndexerDeclaration.GetterRole || node.Role == IndexerDeclaration.SetterRole) {
-                    node.AcceptVisitor(this, data);
-                    Semicolon();
-                }
-            }
-
-            // Now generate the property definition
+        protected void DefineProperty (PropertyDeclaration propertyDeclaration, TypeDefinition declaringType, bool isStatic, string name) {
             WriteIdentifier("Object");
             WriteToken(".", null);
             WriteIdentifier("defineProperty");
@@ -755,7 +792,7 @@ namespace JSIL.Internal {
             WriteToken(",", null);
             Space();
 
-            WritePrimitiveValue(Util.EscapeIdentifier(propertyDeclaration.Name));
+            WritePrimitiveValue(name);
             WriteToken(",", null);
 
             OpenBrace(BraceStyle.EndOfLine);
@@ -789,17 +826,77 @@ namespace JSIL.Internal {
                         WriteToken(".", null);
                         WriteIdentifier("prototype");
                     }
+
                     WriteToken(".", null);
                     WriteIdentifier(String.Format(
-                        "{0}_{1}", prefix, propertyDeclaration.Name
+                        "{0}_{1}_{2}", prefix,
+                        Util.EscapeIdentifier(declaringType.FullName),
+                        Util.EscapeIdentifier(propertyDeclaration.Name)
                     ));
                 }
             }
 
+            NewLine();
             CloseBrace(BraceStyle.NextLine);
 
             RPar();
             Semicolon();
+        }
+
+        public override object VisitPropertyDeclaration (PropertyDeclaration propertyDeclaration, object data) {
+            if (IsIgnored(propertyDeclaration.Attributes))
+                return null;
+
+            StartNode(propertyDeclaration);
+
+            var rawValue = propertyDeclaration.Annotation<PrimitiveExpression>();
+            if (rawValue != null) {
+                // If the property is annotative with a primitive expression, it was replaced with JSReplacement
+                var originalMethod = propertyDeclaration.Annotation<MethodDeclaration>();
+                WriteIdentifier(originalMethod.Annotation<MethodDefinition>().DeclaringType);
+
+                WriteToken(".", null);
+                WriteIdentifier(Util.EscapeIdentifier(propertyDeclaration.Name));
+
+                Space();
+                WriteToken("=", null);
+                Space();
+
+                WriteIdentifier(rawValue.Value as string, null);
+                Semicolon();
+
+                return EndNode(propertyDeclaration);
+            }
+
+            var propertyDefinition = propertyDeclaration.Annotation<PropertyDefinition>();
+            var declaringType = propertyDefinition.DeclaringType;
+
+            bool isStatic = propertyDefinition.GetMethod.IsStatic || propertyDefinition.SetMethod.IsStatic;
+            bool isAutoProperty = propertyDefinition.GetMethod.CustomAttributes.Concat(
+                    propertyDefinition.SetMethod.CustomAttributes
+                ).Where((ca) => ca.AttributeType.Name == "CompilerGeneratedAttribute")
+                .Count() > 0;
+
+            // Generate the accessor methods
+            foreach (AstNode node in propertyDeclaration.Children) {
+                if (node.Role == IndexerDeclaration.GetterRole || node.Role == IndexerDeclaration.SetterRole) {
+                    node.AcceptVisitor(this, data);
+                    Semicolon();
+                }
+            }
+
+            DefineProperty(
+                propertyDeclaration, declaringType,
+                isStatic, String.Format(
+                    "{0}_{1}", Util.EscapeIdentifier(declaringType.FullName),
+                    Util.EscapeIdentifier(propertyDeclaration.Name)
+                )
+            );
+
+            DefineProperty(
+                propertyDeclaration, declaringType, 
+                isStatic, Util.EscapeIdentifier(propertyDeclaration.Name)
+            );
 
             return EndNode(propertyDeclaration);
         }
@@ -825,7 +922,11 @@ namespace JSIL.Internal {
                     WriteKeyword("this");
 
                 WriteToken(".", null);
-                WriteIdentifier(Util.EscapeIdentifier(propertyDefinition.Name));
+                WriteIdentifier(String.Format(
+                    "{0}_{1}",
+                    Util.EscapeIdentifier(declaringType.FullName),
+                    Util.EscapeIdentifier(propertyDefinition.Name)
+                ));
 
                 Space();
                 WriteToken("=", null);
@@ -838,38 +939,17 @@ namespace JSIL.Internal {
             return EndNode(node);
         }
 
-        public override object VisitAccessor (Accessor accessor, object data) {
-            StartNode(accessor);
-            string prefix;
-
-            if (accessor.Role == PropertyDeclaration.GetterRole) {
-                prefix = "get";
-            } else if (accessor.Role == PropertyDeclaration.SetterRole) {
-                prefix = "set";
-            } else {
-                throw new NotImplementedException();
-            }
-
-            var propertyDefinition = accessor.Parent.Annotation<PropertyDefinition>();
-            var methodName = String.Format("{0}_{1}", prefix, propertyDefinition.Name);
-            var declaringType = propertyDefinition.DeclaringType;
-            var storageName = Util.EscapeIdentifier(
-                String.Format("{0}.value", propertyDefinition.Name)
-            );
-            bool isStatic = propertyDefinition.GetMethod.IsStatic || propertyDefinition.SetMethod.IsStatic;
-
+        protected void EmitAccessor (string name, string storageName, TypeDefinition declaringType, BlockStatement body, Role role, bool isStatic) {
             if (!isStatic) {
                 WriteIdentifier(declaringType);
                 WriteToken(".", null);
                 WriteIdentifier("prototype");
             } else {
-                WriteThisReference(
-                    declaringType, isStatic
-                );
+                WriteThisReference(declaringType, isStatic);
             }
 
             WriteToken(".", null);
-            WriteIdentifier(methodName);
+            WriteIdentifier(name);
 
             Space();
             WriteToken("=", null);
@@ -878,13 +958,13 @@ namespace JSIL.Internal {
             WriteKeyword("function");
             Space();
             LPar();
-            if (accessor.Role != PropertyDeclaration.GetterRole)
+            if (role != PropertyDeclaration.GetterRole)
                 WriteKeyword("value");
-            RPar();
-
-            if (accessor.Body.IsNull) {
+            RPar(); 
+            
+            if (body.IsNull) {
                 OpenBrace(BraceStyle.EndOfLine);
-                if (accessor.Role == PropertyDeclaration.GetterRole) {
+                if (role == PropertyDeclaration.GetterRole) {
                     WriteKeyword("return");
 
                     if (isStatic)
@@ -896,7 +976,7 @@ namespace JSIL.Internal {
                     WriteIdentifier(storageName);
 
                     Semicolon();
-                } else if (accessor.Role == PropertyDeclaration.SetterRole) {
+                } else if (role == PropertyDeclaration.SetterRole) {
                     if (isStatic)
                         WriteIdentifier(declaringType);
                     else
@@ -915,8 +995,38 @@ namespace JSIL.Internal {
 
                 CloseBrace(BraceStyle.NextLine);
             } else {
-                WriteMethodBody(accessor.Body);
+                body.AcceptVisitor(this, null);
             }
+        }
+
+        public override object VisitAccessor (Accessor accessor, object data) {
+            StartNode(accessor);
+            string prefix;
+
+            if (accessor.Role == PropertyDeclaration.GetterRole) {
+                prefix = "get";
+            } else if (accessor.Role == PropertyDeclaration.SetterRole) {
+                prefix = "set";
+            } else {
+                throw new NotImplementedException();
+            }
+
+            var propertyDefinition = accessor.Parent.Annotation<PropertyDefinition>();
+            var declaringType = propertyDefinition.DeclaringType;
+
+            var methodName = String.Format(
+                "{0}_{1}_{2}", prefix,
+                Util.EscapeIdentifier(declaringType.FullName),
+                Util.EscapeIdentifier(propertyDefinition.Name)
+            );
+            var storageName = String.Format(
+                "_{0}_{1}",
+                Util.EscapeIdentifier(declaringType.FullName), 
+                Util.EscapeIdentifier(propertyDefinition.Name)
+            );
+            bool isStatic = propertyDefinition.GetMethod.IsStatic || propertyDefinition.SetMethod.IsStatic;
+
+            EmitAccessor(methodName, storageName, declaringType, accessor.Body, accessor.Role, isStatic);
 
             return EndNode(accessor);
         }
@@ -945,6 +1055,15 @@ namespace JSIL.Internal {
                 declaringType,
                 field.Resolve().Attributes.HasFlag(FieldAttributes.Static)
             );
+        }
+
+        protected void WritePrototypeReference (TypeDefinition declaringType, bool isStatic) {
+            WriteIdentifier(declaringType);
+
+            if (!isStatic) {
+                WriteToken(".", null);
+                WriteIdentifier("prototype");
+            }
         }
 
         protected void WriteThisReference (TypeDefinition declaringType, bool isStatic) {
@@ -978,21 +1097,21 @@ namespace JSIL.Internal {
 
             var declaringType = methodDeclaration.Annotation<MethodDefinition>().DeclaringType;
 
-            if (!IsStatic(methodDeclaration)) {
-                WriteIdentifier(declaringType);
-                WriteToken(".", null);
-                WriteIdentifier("prototype");
-            } else {
-                WriteThisReference(
-                    declaringType, true
-                );
-            }
+            WritePrototypeReference(
+                declaringType, IsStatic(methodDeclaration)
+            );
 
             WriteToken(".", null);
-            WriteIdentifier(methodDeclaration);
+            WriteIdentifier(String.Format(
+                "{0}_{1}", 
+                Util.EscapeIdentifier(declaringType.FullName),
+                Util.EscapeIdentifier(methodDeclaration.Name)
+            ));
+
             Space();
             WriteToken("=", null);
             Space();
+
             WriteKeyword("function");
             Space();
 
@@ -1005,6 +1124,27 @@ namespace JSIL.Internal {
                 CloseBrace(BraceStyle.NextLine);
             }
 
+            Semicolon();
+
+            WritePrototypeReference(
+                declaringType, IsStatic(methodDeclaration)
+            );
+            WriteToken(".", null);
+            WriteIdentifier(methodDeclaration);
+
+            Space();
+            WriteToken("=", null);
+            Space();
+
+            WritePrototypeReference(
+                declaringType, IsStatic(methodDeclaration)
+            );
+            WriteToken(".", null);
+            WriteIdentifier(String.Format(
+                "{0}_{1}",
+                Util.EscapeIdentifier(declaringType.FullName),
+                Util.EscapeIdentifier(methodDeclaration.Name)
+            ));
             Semicolon();
 
             return EndNode(methodDeclaration);
