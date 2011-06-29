@@ -228,7 +228,6 @@
     <None Include="TestCases\CastingFromNull.cs" />
     <None Include="TestCases\GenericStaticConstructorOrdering.cs" />
     <None Include="TestCases\StaticArrayInitializer.cs" />
-    <Compile Include="TestCases\StaticInitializersInGenericTypesSettingStaticFields.cs" />
     <Compile Include="Util.cs" />
     <Compile Include="VerbatimTests.cs" />
   </ItemGroup>
