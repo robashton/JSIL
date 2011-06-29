@@ -658,8 +658,12 @@ namespace JSIL {
             foreach (var nestedTypedef in typedef.NestedTypes)
                 SealType(context, output, nestedTypedef, sealedTypes);
 
-            if (typeInfo.StaticConstructor != null)
+            if (
+                (typeInfo.StaticConstructor != null) ||
+                (typedef.BaseType is GenericInstanceType)
+            ) {
                 sealedTypes.Add(typedef);
+            }
         }
 
         protected void TranslateTypeDefinition (DecompilerContext context, JavascriptFormatter output, TypeDefinition typedef, List<Action> initializer, bool stubbed) {
