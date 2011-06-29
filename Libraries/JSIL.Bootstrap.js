@@ -575,15 +575,15 @@ System.Text.ASCIIEncoding.prototype._ctor = function () {
 };
 
 System.Nullable$b1.prototype._ctor = function (value) {
-    this.value = value || null;
+    this.value = value;
 };
 
 System.Nullable$b1.prototype.get_HasValue = function () {
-  return (this.value !== null);
+  return (this.value);
 };
 
 System.Nullable$b1.prototype.get_Value = function () {
-  if (this.value === null)
+  if (this.value)
     throw new System.NullReferenceException();
 
   return this.value;
