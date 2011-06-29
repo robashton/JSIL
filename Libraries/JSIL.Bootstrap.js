@@ -583,7 +583,7 @@ System.Nullable$b1.prototype.get_HasValue = function () {
 };
 
 System.Nullable$b1.prototype.get_Value = function () {
-  if (this.value)
+  if (!this.value)
     throw new System.NullReferenceException();
 
   return this.value;
