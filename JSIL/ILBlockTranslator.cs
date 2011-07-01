@@ -30,9 +30,7 @@ namespace JSIL {
         // Yuck :(
         static readonly Dictionary<Tuple<string, string>, bool> TypeAssignabilityCache = new Dictionary<Tuple<string, string>, bool>();
 
-        public readonly JSILIdentifier JSIL;
-        public readonly JSSpecialIdentifiers JS;
-        public readonly CLRSpecialIdentifiers CLR;
+        public readonly SpecialIdentifiers SpecialIdentifiers;
 
         protected int LabelledBlockCount = 0;
         protected int UnlabelledBlockCount = 0;
@@ -46,9 +44,7 @@ namespace JSIL {
             ThisMethod = methodDefinition;
             Block = ilb;
 
-            JS = new JSSpecialIdentifiers(TypeSystem);
-            JSIL = new JSILIdentifier(TypeSystem, JS);
-            CLR = new CLRSpecialIdentifiers(TypeSystem);
+            SpecialIdentifiers = new JSIL.SpecialIdentifiers(TypeSystem);
 
             if (methodReference.HasThis)
                 Variables.Add("this", JSThisParameter.New(methodReference.DeclaringType, methodReference));
@@ -70,6 +66,18 @@ namespace JSIL {
                 } else {
                     Variables.Add(v.Identifier, v);
                 }
+            }
+        }
+
+        protected JSSpecialIdentifiers JS {
+            get {
+                return SpecialIdentifiers.JS;
+            }
+        }
+
+        protected JSILIdentifier JSIL {
+            get {
+                return SpecialIdentifiers.JSIL;
             }
         }
 
@@ -426,8 +434,8 @@ namespace JSIL {
                 return new TypeReference(ts.Object.Namespace, "Array", ts.Object.Module, ts.Object.Scope).ResolveOrThrow();
             else if (IsIgnoredType(typeRef))
                 return null;
-            else
-                return typeRef.ResolveOrThrow();
+            else 
+                return typeRef.Resolve();
         }
 
         public static TypeReference FullyDereferenceType (TypeReference type, out int depth) {
@@ -1804,51 +1812,40 @@ namespace JSIL {
 
                     if (methodMember != null) {
                         var methodDef = methodMember.Method.Member;
-                        var function = Translator.TranslateMethodExpression(
-                            Context, methodDef, methodDef
-                        );
 
-                        var thisArgVar = thisArg as JSVariable;
+                        bool emitInline = (
+                                methodDef.IsPrivate && 
+                                methodDef.IsCompilerGenerated()
+                            ) || (
+                                methodDef.DeclaringType.IsCompilerGenerated() &&
+                                TypesAreEqual(
+                                    thisArg.GetExpectedType(TypeSystem),
+                                    methodDef.DeclaringType
+                                )
+                            );
 
-                        if ((thisArgVar != null) && thisArgVar.IsThis) {
-                            var outerThis = DeclareVariable(new JSVariable(
-                                "$outer_this", thisArgVar.Type, ThisMethodReference, 
-                                new JSThisParameter(thisArgVar.Type, ThisMethodReference)
-                            ));
+                        if (emitInline) {
+                            JSFunctionExpression function;
+                            // It's possible that the method we're using wasn't initially translated/analyzed because it's
+                            //  a compiler-generated method or part of a compiler generated type
+                            if (!Translator.FunctionCache.TryGetExpression(methodMember.QualifiedIdentifier, out function)) {
+                                function = Translator.TranslateMethodExpression(Context, methodDef, methodDef);
+                            }
 
-                            new VariableEliminator(
-                                thisArgVar,
-                                outerThis
-                            ).Visit(function);
+                            var thisArgVar = thisArg as JSVariable;
 
-                            thisArg = thisArgVar = outerThis;
-                        } else if (methodDef.HasThis && function.AllVariables.ContainsKey("this")) {
-                            new VariableEliminator(
-                                function.AllVariables["this"],
-                                thisArg
-                            ).Visit(function);
-                            function.AllVariables.Remove("this");
-                        }
+                            if ((thisArgVar != null) && thisArgVar.IsThis) {
+                                var outerThis = DeclareVariable(new JSVariable(
+                                    "$outer_this", thisArgVar.Type, ThisMethodReference, 
+                                    new JSThisParameter(thisArgVar.Type, ThisMethodReference)
+                                ));
 
-                        if (
-                            methodDef.IsPrivate && 
-                            methodDef.IsCompilerGenerated()
-                        ) {
-                            // Lambda with no closed-over locals
+                                thisArg = thisArgVar = outerThis;
+                            }// else if (methodDef.HasThis && function.AllVariables.ContainsKey("this")) {
 
-                            return function;
-                        } else if (
-                            methodDef.DeclaringType.IsCompilerGenerated() &&
-                            TypesAreEqual(
-                                thisArg.GetExpectedType(TypeSystem),
-                                methodDef.DeclaringType
-                            )
-                        ) {
-                            // Lambda with closed-over locals
-
-                            return function;
-                        } else {
-                            Debugger.Break();
+                            return new JSLambda(
+                                function, thisArg
+                            );
                         }
                     }
                 }

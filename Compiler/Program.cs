@@ -47,29 +47,68 @@ namespace JSIL.Compiler {
 
         static void Main (string[] arguments) {
             var translator = new AssemblyTranslator();
-            translator.StartedLoadingAssembly += (fn) => {
+            translator.LoadingAssembly += (fn, progress) => {
                 Console.Error.WriteLine("// Loading {0}...", fn);
             };
-            translator.StartedDecompilingAssembly += (fn, s) => {
-                if (s)
-                    Console.Error.WriteLine("// Generating stub for {0}...", fn);
-                else
-                    Console.Error.WriteLine("// Translating {0}...", fn);
+            translator.Decompiling += (progress) => {
+                Console.Error.Write("// Decompiling ");
+
+                var previous = new int[1] { 0 };
+
+                progress.ProgressChanged += (s, p, max) => {
+                    var current = p * 20 / max;
+                    if (current != previous[0]) {
+                        previous[0] = current;
+                        Console.Error.Write(".");
+                    }
+                };
+
+                progress.Finished += (s, e) => {
+                    Console.Error.WriteLine(" done");
+                };
+            };
+            translator.Optimizing += (progress) => {
+                Console.Error.Write("// Optimizing ");
+
+                var previous = new int[1] { 0 };
+
+                progress.ProgressChanged += (s, p, max) => {
+                    var current = p * 20 / max;
+                    if (current != previous[0]) {
+                        previous[0] = current;
+                        Console.Error.Write(".");
+                    }
+                };
+
+                progress.Finished += (s, e) => {
+                    Console.Error.WriteLine(" done");
+                };
+            };
+            translator.Writing += (progress) => {
+                Console.Error.Write("// Writing JS ");
+
+                var previous = new int[1] { 0 };
+
+                progress.ProgressChanged += (s, p, max) => {
+                    var current = p * 20 / max;
+                    if (current != previous[0]) {
+                        previous[0] = current;
+                        Console.Error.Write(".");
+                    }
+                };
+
+                progress.Finished += (s, e) => {
+                    Console.Error.WriteLine(" done");
+                };
             };
             translator.CouldNotLoadSymbols += (fn, ex) => {
-                Console.Error.WriteLine("// No symbols: {0}", ex.Message);
+                Console.Error.WriteLine("// {0}", ex.Message);
             };
             translator.CouldNotResolveAssembly += (fn, ex) => {
                 Console.Error.WriteLine("// Could not load module {0}: {1}", fn, ex.Message);
             };
             translator.CouldNotDecompileMethod += (fn, ex) => {
                 Console.Error.WriteLine("// Could not decompile method {0}: {1}", fn, ex.Message);
-            };
-            translator.StartedDecompilingMethod += (fn) => {
-                Console.Error.Write("// Decompiling {0}... ", fn);
-            };
-            translator.FinishedDecompilingMethod += (fn) => {
-                Console.Error.WriteLine("done.");
             };
 
             var filenames = new HashSet<string>(arguments);
